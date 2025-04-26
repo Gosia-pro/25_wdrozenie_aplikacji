@@ -7,6 +7,8 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, Distance, VectorParams
 from io import BytesIO
 import os
+from dotenv import dotenv_values
+
 #print(base64_audio)  # Check the content of the base64 string
 
 import base64
