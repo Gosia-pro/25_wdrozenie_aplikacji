@@ -8,33 +8,19 @@ from qdrant_client.models import PointStruct, Distance, VectorParams
 from io import BytesIO
 import os
 from dotenv import dotenv_values
-
-#print(base64_audio)  # Check the content of the base64 string
-
-import base64
-
-#audio_bytes = audio.getvalue()
-#base64_audio = base64.b64encode(audio_bytes).decode('utf-8')
-
+import time
 
 # Załaduj zmienne środowiskowe z pliku .env
 load_dotenv()
 
 env = dotenv_values(".env")
-#https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/secrets-management
 if "QDRANT_URL" in st.secrets:
     env["QDRANT_URL"] = st.secrets["QDRANT_URL"]
 if "QDRANT_API_KEY" in st.secrets:
     env["QDRANT_API_KEY"] = st.secrets["QDRANT_API_KEY"]
     
-   
 # Funkcja do pobierania sekretów z .env lub streamlit.secrets
 def get_secret(key: str) -> str:
-    """
-    Pobiera wartość sekretu:
-    - Najpierw próbuje ze streamlit.secrets
-    - Jeśli nie znajdzie, bierze z os.environ (czyli .env)
-    """
     if key in st.secrets:
         return st.secrets[key]
     elif key in os.environ:
@@ -65,31 +51,52 @@ def transcribe_audio(audio_bytes):
         )
         return transcript.text
     except Exception as e:
-        st.error(f"Nie ud ało się przetworzyć audio: {e}")
+        st.error(f"Nie udało się przetworzyć audio: {e}")
         return ""
 
 # Qdrant Client
 @st.cache_resource
 def get_qdrant_client():
     return QdrantClient(
-        url=os.getenv("QDRANT_URL"),  # Pobieramy URL z pliku .env
-        api_key=os.getenv("QDRANT_API_KEY")  # Pobieramy klucz API z pliku .env
+        url=os.getenv("QDRANT_URL"),
+        api_key=os.getenv("QDRANT_API_KEY")
     )
+
+# Test połączenia z Qdrant
+def test_qdrant_connection():
+    try:
+        qdrant_client = get_qdrant_client()
+        qdrant_client.get_health()  # Sprawdzamy zdrowie serwera Qdrant
+        return True
+    except Exception as e:
+        st.error(f"Nie udało się połączyć z Qdrant: {e}")
+        return False
 
 # Sprawdzenie istnienia kolekcji w Qdrant
 def assure_db_collection_exists():
     qdrant_client = get_qdrant_client()
-    if not qdrant_client.collection_exists(QDRANT_COLLECTION_NAME):
-        print("Tworzę kolekcję")
-        qdrant_client.create_collection(
-            collection_name=QDRANT_COLLECTION_NAME,
-            vectors_config=VectorParams(
-                size=EMBEDDING_DIM,
-                distance=Distance.COSINE,
-            ),
-        )
-    else:
-        print("Kolekcja już istnieje")
+    
+    # Testujemy połączenie
+    if not test_qdrant_connection():
+        return  # Jeśli połączenie nie działa, nie kontynuujemy
+    
+    # Próbujemy sprawdzić kolekcję z opóźnieniem, by dać serwerowi więcej czasu
+    try:
+        time.sleep(2)  # Dodajemy krótkie opóźnienie
+        if not qdrant_client.collection_exists(QDRANT_COLLECTION_NAME):
+            st.info("Kolekcja nie istnieje. Tworzymy ją.")
+            qdrant_client.create_collection(
+                collection_name=QDRANT_COLLECTION_NAME,
+                vectors_config=VectorParams(
+                    size=EMBEDDING_DIM,
+                    distance=Distance.COSINE,
+                ),
+            )
+        else:
+            st.info("Kolekcja już istnieje.")
+    except Exception as e:
+        st.error(f"Błąd przy sprawdzaniu lub tworzeniu kolekcji w Qdrant: {e}")
+        st.stop()
 
 # Tworzenie embeddingów
 def get_embeddings(text):
@@ -189,15 +196,4 @@ with add_tab:
         if st.session_state["note_audio_text"]:
             st.session_state["note_text"] = st.text_area("Edytuj notatkę", value=st.session_state["note_audio_text"])
 
-        if st.session_state["note_text"] and st.button("Zapisz notatkę", disabled=not st.session_state["note_text"]):
-            add_note_to_db(note_text=st.session_state["note_text"])
-            st.toast("Notatka zapisana", icon="🎉")
-
-with search_tab:
-    query = st.text_input("Wyszukaj notatkę")
-    if st.button("Szukaj"):
-        for note in list_notes_from_db(query):
-            with st.container(border=True):
-                st.markdown(note["text"])
-                if note["score"]:
-                    st.markdown(f':violet[{note["score"]}]')
+        if st.session_state["note_text"] and st.button("Zapisz notatkę", disabled=not st.session_state["note_text
