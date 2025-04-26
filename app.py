@@ -7,7 +7,12 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, Distance, VectorParams
 from io import BytesIO
 import os
-print(base64_audio)  # Check the content of the base64 string
+#print(base64_audio)  # Check the content of the base64 string
+
+import base64
+
+audio_bytes = audio.getvalue()
+base64_audio = base64.b64encode(audio_bytes).decode('utf-8')
 
 
 # Załaduj zmienne środowiskowe z pliku .env
